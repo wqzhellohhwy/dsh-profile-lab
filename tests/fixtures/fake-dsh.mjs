@@ -11,6 +11,9 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { zstdCompressSync } from 'node:zlib'
+
+import { cwdToSessionDirName } from '../../lib/guards.js'
 
 const args = process.argv.slice(2)
 const home = process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? '.', '.dsh')
@@ -96,6 +99,39 @@ if (args[0] === 'plugin') {
   json.dsh.profile.bundles = bundles
   saveManifest(name, json)
   process.stdout.write(`dependencies:\n+ ${packages.join('\n+ ')}\nDone\n`)
+  process.exit(0)
+}
+
+// 形如 `--profile <name> [--session-id <id>] [--json] <task>`：模拟一次 headless 运行，
+// 并把会话**真的落到磁盘**（多帧 zstd），这样工具层的 tmpprofile_run → tmpprofile_session
+// 闭环能被确定性测试。
+if (args.includes('--profile')) {
+  const profileIndex = args.indexOf('--profile')
+  const target = args[profileIndex + 1]
+  const sessionIndex = args.indexOf('--session-id')
+  const json = args.includes('--json')
+  const sessionId = sessionIndex >= 0 ? args[sessionIndex + 1] : `session-fake-${Date.now().toString(36)}`
+  const cwd = process.cwd()
+  const sessionDir = join(home, 'sessions', cwdToSessionDirName(cwd), sessionId)
+  mkdirSync(sessionDir, { recursive: true })
+  const file = join(sessionDir, 'session.v4.jsonl.zstd')
+  const rows = existsSync(file)
+    ? []
+    : [{ type: 'session', version: 4, id: sessionId, cwd, agentPreset: 'fake-preset' }]
+  rows.push(
+    { type: 'tool/call', seq: 1, data: { name: 'tmpprofile_list', callId: `call-${Date.now()}` } },
+    { type: 'tool/result', seq: 2, data: { message: { toolCallId: `call-${Date.now()}`, isError: false, content: [{ type: 'text', text: 'ok' }] } } },
+    { type: 'assistant/message', seq: 3, data: { usage: { inputTokens: 11, cacheReadTokens: 22, outputTokens: 3 } } },
+    { type: 'turn/end', seq: 4 },
+  )
+  writeFileSync(file, Buffer.concat(rows.map((row) => zstdCompressSync(Buffer.from(`${JSON.stringify(row)}\n`, 'utf8')))), { flag: existsSync(file) ? 'a' : 'w' })
+  if (json) {
+    process.stdout.write(`${JSON.stringify({ type: 'session', sessionId, id: sessionId })}\n`)
+    process.stdout.write(`${JSON.stringify({ type: 'tool_call', name: 'tmpprofile_list' })}\n`)
+    process.stdout.write(`${JSON.stringify({ type: 'final', text: `fake-ok:${target}` })}\n`)
+  } else {
+    process.stdout.write(`fake-ok:${target}\n`)
+  }
   process.exit(0)
 }
 
