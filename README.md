@@ -115,6 +115,28 @@ tmpprofile_clean   { names: ["probeA"], confirm: true }
 
 ---
 
+## 两个 DSH 侧的坑（本插件都已堵掉）
+
+1. **工具返回值必须是 lossless JSON**。只要返回值里出现 `undefined`（哪怕只是某个可选字段），DSH 会把整条结果拒收，模型看到的是
+   `tool "x" returned invalid output: value is not lossless JSON` 而不是数据。本插件在所有工具出口统一做了一次净化（丢 `undefined`、非有限数转 `null`）。
+2. **headless 的 `--json` 是投影，不是日志**。它用自己的一套事件名（`tool_call`、`tool_result`、`status`、`thinking`…），**不含**日志里的 `tool/call`；
+   官方文档也明说它"caps every string except the terminal `final` at 8 KiB and omits events the projection does not model"。
+   所以「到底调了哪些工具」必须以磁盘上的完整会话日志为准——`tmpprofile_run` 已经替你把这一步做了：返回值里的 `session.tools` 就是完整日志的工具面。
+
+---
+
+## 自检
+
+装好之后（或改动代码之后）可以直接跑内置自检——它会真建一个临时 profile、装本插件、跑一次 headless 让模型调用 `tmpprofile_list`、再清理：
+
+```powershell
+node scripts/selfcheck.mjs
+```
+
+退出码 0 表示插件在真实 DSH 里能加载、工具可被调用、清理无残留。
+
+---
+
 ## 测试
 
 ```powershell
