@@ -1,0 +1,16 @@
+# dsh-profile-lab 的组合包(bundle)层。
+#
+# 声明 dsh.bundle.patch 后，本文件成为该包在 profile 组合中的一层 patch：
+# profile 的 dsh.profile.bundles 列出本包时，dsh 会按序应用这里的条目，
+# 插件因此以「标准插件」身份被装配——出现在插件列表、启停入口与
+# 「内置插件」清单里，并带上 package.json 的标题/描述。
+#
+# 本插件只有宿主半侧（五个 tmpprofile_* 工具），没有浏览器半侧，
+# 所以不声明 dsh.client；inject 里也只写 'tools'（不写 'webServer'），
+# 这样在 headless / tui 这类没有 HTTP 服务的 profile 里也不会整体 pending。
+#
+# id 在整个 profile 组合里必须唯一；config 留空对象，插件自身对未声明字段有兜底。
+- insert:
+    - id: dsh-profile-lab
+      name: 'dsh-profile-lab'
+      config: {}
