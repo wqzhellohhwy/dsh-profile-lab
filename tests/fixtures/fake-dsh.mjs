@@ -10,12 +10,14 @@
  *   - `-V` → 版本号
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
 
 import { cwdToSessionDirName } from '../../lib/guards.js'
 
 const args = process.argv.slice(2)
+if (process.env.FAKE_DSH_DEBUG === '1') process.stderr.write(`ARGS=${JSON.stringify(args)}\n`)
 const home = process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? '.', '.dsh')
 const profiles = join(home, 'profiles')
 
@@ -105,7 +107,31 @@ if (args[0] === 'plugin') {
 // 形如 `--profile <name> [--session-id <id>] [--json] <task>`：模拟一次 headless 运行，
 // 并把会话**真的落到磁盘**（多帧 zstd），这样工具层的 tmpprofile_run → tmpprofile_session
 // 闭环能被确定性测试。
-if (args.includes('--profile')) {
+// 形如 `--profile <name> --port <n>`：模拟 `dsh web` —— 起一个真实 HTTP 服务并**驻留**，
+// 直到被 taskkill。这样 tmpprofile_web_start / probe / stop 能被确定性测试。
+if (args.includes('--port')) {  const portIndex = args.indexOf('--port')
+  const port = Number(args[portIndex + 1])
+  const profileIndex = args.indexOf('--profile')
+  const target = profileIndex >= 0 ? args[profileIndex + 1] : undefined
+  const server = createServer((req, res) => {
+    if (req.url === '/' || req.url === undefined) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+      res.end('<html><body>fake web</body></html>')
+      return
+    }
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ ok: true, fake: true, profile: target, path: req.url }))
+  })
+  server.listen(port, '127.0.0.1', () => {
+    // 与真实 dsh 的启动横幅同形（真货还带 ?token=…）
+    process.stdout.write(`dsh web: http://127.0.0.1:${port}/\n`)
+  })
+  server.on('error', (error) => {
+    process.stderr.write(`fake-dsh: listen 失败 ${String(error?.message ?? error)}\n`)
+    process.exit(1)
+  })
+  // 故意不退出：驻留到被杀
+} else if (args.includes('--profile')) {
   const profileIndex = args.indexOf('--profile')
   const target = args[profileIndex + 1]
   const sessionIndex = args.indexOf('--session-id')
@@ -133,14 +159,14 @@ if (args.includes('--profile')) {
     process.stdout.write(`fake-ok:${target}\n`)
   }
   process.exit(0)
+} else {
+  // 形如 `<name> --from-default-profile <tpl> --dump-config`
+  const name = args[0]
+  const templateIndex = args.indexOf('--from-default-profile')
+  const template = templateIndex >= 0 ? args[templateIndex + 1] : 'headless'
+  if (!existsSync(join(profiles, name, 'package.json'))) {
+    writeProfile(name, ['@deepseek-ai/dsh-base', template === 'headless' ? '@deepseek-ai/dsh-headless' : '@deepseek-ai/dsh-web-app'])
+  }
+  process.stdout.write(`# fake dump-config for ${name}\n- id: fake\n  name: 'fake'\n`)
+  process.exit(0)
 }
-
-// 形如 `<name> --from-default-profile <tpl> --dump-config`
-const name = args[0]
-const templateIndex = args.indexOf('--from-default-profile')
-const template = templateIndex >= 0 ? args[templateIndex + 1] : 'headless'
-if (!existsSync(join(profiles, name, 'package.json'))) {
-  writeProfile(name, ['@deepseek-ai/dsh-base', template === 'headless' ? '@deepseek-ai/dsh-headless' : '@deepseek-ai/dsh-web-app'])
-}
-process.stdout.write(`# fake dump-config for ${name}\n- id: fake\n  name: 'fake'\n`)
-process.exit(0)

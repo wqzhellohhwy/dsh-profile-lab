@@ -1,6 +1,6 @@
 # dsh-profile-lab
 
-> 给 DeepSeek Harness（DSH）用的**临时 profile 实验台**：一条命令建出隔离的 profile，装插件、跑 headless 探针会话、读回结构化摘要、安全回收。
+> 给 DeepSeek Harness（DSH）用的**临时 profile 实验台**：一条命令建出隔离的 profile，装插件、跑 headless 探针会话、起驻留 web 实例验 HTTP/渲染面、读回结构化摘要、安全回收。
 >
 > 它存在的唯一理由：**改插件时怕把本体改暴毙**——先在隔离环境里验，确认无误再装进日常用的 profile。
 
@@ -17,6 +17,7 @@
 | 想隔离测试，但官方 `--from-default-profile` 只能从 5 个内置模板初始化、**不能从现有 profile 克隆**，还要求目标目录不存在 → 手工 `New-Item` + 写 4 个文件 | `tmpprofile_create`：模板建 **或** `clone: "desktop"` 克隆（配置复制 + `node_modules` 逐项链接复用） |
 | 以为 `--from-default-profile` 必然启动，没法"只建不跑" | 内部走 `--dump-config` 短路 boot（**只建、不启动**） |
 | 跑探针要手拼 `DSH_HOME` + 环境变量 + `dsh --profile X "任务"`，跑完还要自己去 `sessions/` 里翻会话 | `tmpprofile_run`：一次调用完成"装配 → 跑 → 返回 sessionId 与事件摘要" |
+| **验不了渲染端 / HTTP 面**（headless 根本没有 HTTP 服务），只能手搓 pwsh 起 `dsh web --port` 再 curl | `tmpprofile_web_start` / `web_probe` / `web_stop`：起**驻留 web 实例**、探任意路由、按 pid 收（跨插件重载也能收） |
 | 读回验证要自己解**多帧 zstd**（`session.v4.jsonl.zstd`），几乎每个会话都重写一遍 Python | `tmpprofile_session`：内置逐帧解码，直接给 preset / 工具面 / 上下文 / token |
 | 清理靠自觉（历史上真的漏过两次，残留至今） | `tmpprofile_clean`：清单白名单 + junction 感知删除 + 残留自检 |
 | junction 直接 `Remove-Item -Recurse` 有删进源仓库的风险 | 先 `lstat` 判链接、解链接，再递归删目录；**绝不跟随链接** |
@@ -37,16 +38,19 @@ dsh plugin --profile desktop add github:<你的账号>/dsh-profile-lab
 
 ---
 
-## 六个工具
+## 十个工具
 
 | 工具 | 干什么 | 关键参数 |
 |---|---|---|
 | `tmpprofile_create` | 建隔离 profile（模板 / 克隆）＋可选装包 | `name`、`template`（默认 `headless`）、`clone`、`packages`、`purpose`、`overwrite` |
 | `tmpprofile_install` | 往已登记的临时 profile 追加安装 / 移除 | `name`、`packages`、`remove` |
 | `tmpprofile_run` | 跑一次 headless 探针会话（同步、带超时） | `name`、`task`、`sessionId`、`env`、`timeoutMs`、`json` |
+| `tmpprofile_web_start` | 起**驻留 web 实例**（真实 HTTP 服务，验 host 路由/渲染面） | `name`、`port`、`probePath`、`waitMs`、`cwd`、`env` |
+| `tmpprofile_web_probe` | 对驻留实例发一次 HTTP 探针 | `name`、`path`、`method`、`timeoutMs` |
+| `tmpprofile_web_stop` | 停掉驻留实例（`taskkill /T /F` + 确认端口释放） | `name`、`waitMs` |
 | `tmpprofile_session` | 读会话日志给结构化摘要 | `sessionId` 或 `name`、`sections`、`limit` |
 | `tmpprofile_list` | 列出「本插件管的」与「未登记的」profile | — |
-| `tmpprofile_clean` | 清理（默认 dry-run，需 `confirm: true`） | `names`、`confirm`、`sessions`、`archiveTo` |
+| `tmpprofile_clean` | 清理（默认 dry-run，需 `confirm: true`；会先停实例） | `names`、`confirm`、`sessions`、`archiveTo` |
 | `tmpprofile_fingerprint` | 采集 `profiles/` 指纹，自查有没有碰到别的 profile | `exclude` |
 
 > 工具名以 `tmpprofile_` 开头，便于在 `dsh-tool-manager` 里整组启用/禁用。
@@ -54,11 +58,24 @@ dsh plugin --profile desktop add github:<你的账号>/dsh-profile-lab
 **典型闭环（模型视角）**：
 
 ```
+# A. host 面：装配 + 工具面 + 会话行为
 tmpprofile_create  { name: "probeA", template: "headless", purpose: "验证 dsh-xxx 的工具面", packages: ["link:C:/plugins/dsh-xxx"] }
 tmpprofile_run     { name: "probeA", task: "只回复两个字：OK" }
 tmpprofile_session { name: "probeA", sections: ["preset","tools","contexts"] }
-tmpprofile_clean   { names: ["probeA"], confirm: true }
+
+# B. 渲染 / HTTP 面：起真实例，探插件的 host 路由
+tmpprofile_create    { name: "webA", template: "web", packages: ["link:C:/plugins/dsh-xxx"] }
+tmpprofile_web_start { name: "webA", probePath: "/api/dsh-xxx/status" }
+tmpprofile_web_stop  { name: "webA" }
+
+tmpprofile_clean   { names: ["probeA", "webA"], confirm: true }
 ```
+
+> **web 实例与 headless 探针验的不是同一件事**：headless 给 **host 侧装配事实**
+> （哪个 entry 没激活、卡在等哪个服务），web 实例给 **HTTP/渲染面事实**
+> （端口真的在听、插件的 host 路由真的注册了、页面能加载）。两者都要，才有完整画像。
+> 注意 `web_start` 要求 profile 的 bundles 里有 `@deepseek-ai/dsh-web-app`——
+> 用 `template: "web"` 建，或从带 web-app 的 profile 克隆。
 
 更多配方见 [docs/RECIPES.md](docs/RECIPES.md)。
 
@@ -74,7 +91,8 @@ tmpprofile_clean   { names: ["probeA"], confirm: true }
 6. **失败留痕**：profile 先登记再装包，装包失败也留在清单里，能被 `tmpprofile_clean` 回收。
 7. **进程内 + 跨进程锁**：同一 profile 不允许并发运行；跨进程写操作走 `$DSH_HOME/profile-lab.lock`（陈旧锁 120s 自动抢占）。
 8. **审计日志**：每次 create / install / run / clean 追加一行到 `$DSH_HOME/profile-lab-log.jsonl`。
-9. **不做后台任务**：DSH 的子进程在宿主的 Job Object 里（宿主退出会连带杀死），所以 `tmpprofile_run` 一律**同步 + 超时**（默认 300s，上限 900s，超时 `taskkill /T /F` 杀整棵进程树）。
+9. **驻留实例是刻意的例外，且加倍设防**：`tmpprofile_web_start` 起的 web 实例会**驻留**（这是它存在的意义），所以：同一 profile 只允许一个实例；端口从 19399 起自动挑空闲的；stdout/stderr 只留尾部环形缓冲；进程**不 detach**（留在宿主 Job Object 内，宿主退出连带杀掉）；插件卸载时 `killAllWebInstances()` 再扫一遍；`tmpprofile_clean` 删目录前先按清单 pid 停实例。
+10. **不做后台任务**：DSH 的子进程在宿主的 Job Object 里（宿主退出会连带杀死），所以 `tmpprofile_run` 一律**同步 + 超时**（默认 300s，上限 900s，超时 `taskkill /T /F` 杀整棵进程树）；唯一的常驻形态就是上面那三条 `web_*` 工具，并且必须由调用方显式停止（或用 `clean` 兜底）。
 
 ---
 
@@ -154,7 +172,8 @@ live 测试的硬断言：**除本次建的临时 profile 外，`profiles/` 里�
 ## 限制（明确不做）
 
 - **不是危机救援工具**：主力 profile 起不来时，本插件也起不来。要救援请用 `rescue` / `reserve` 实例。
-- **不做后台/脱离宿主的任务**：见上文 Job Object。
+- **web 实例只验到"服务端+静态资源"这一层**：端口在听、路由在答、页面 HTML 能取到；页面里 JS 真的执行、UI 真的渲染出来，只有真浏览器加载才会发生（需要的话自己打开 `http://127.0.0.1:<port>/` 看）。
+- **不做脱离宿主的任务**：见上文 Job Object。
 - **不自动纳管已有的临时 profile**：`profiles/` 里历史残留（例如早年手工建的目录）会出现在 `unmanaged` 列表里，需要你确认后用 `adoptProfile` 显式纳管，本插件不会自动动它们。
 - **共享 `DSH_HOME`**：探针会话仍写在主力的 `sessions/` / `storages/` 下（同一 home 无跨进程锁）。要彻底隔离得用独立 `DSH_HOME`，尚未实现。
 

@@ -99,6 +99,44 @@ tmpprofile_fingerprint { exclude: ["probeA"] }
 
 ---
 
+## 配方 5：验渲染端 / HTTP 面（headless 验不了的那一层）
+
+**场景**：插件是 **client UI 插件**（有浏览器半边），或者带 host HTTP 路由。headless 探针能告诉你
+"entry 激没激活"，但**验不了 HTTP 服务**——headless 根本没有 webServer，client 插件的 host 半边
+只会显示 `pending (waiting for service: webServer)`。要验这一层，就得起一个真实 web 实例。
+
+```
+tmpprofile_create    { name: "webA", template: "web", purpose: "验 dsh-xxx 的 host 路由",
+                       packages: ["link:C:/plugins/dsh-xxx"] }
+tmpprofile_web_start { name: "webA", probePath: "/api/dsh-xxx/status" }
+```
+
+看返回：
+
+- `ready: true` + `url` → 实例起来了（端口缺省从 19399 起自动挑空闲的）；
+- `probe.status: 200` 且 body 是插件自己的 JSON → **插件的 host 半边已经 apply**（路由真的注册了）；
+- `probe.status: 401` → 路由可能没错，是页面级鉴权把未带 token 的 curl 挡住了（DSH 的 `dsh web` 对非回环/无 token 的请求会这样）；
+- 起不来（`ok: false`）→ 看返回里的 `logTail`，常见是 profile 的 bundles 里没有
+  `@deepseek-ai/dsh-web-app`（headless 模板就这样），或插件在启动期抛错。
+
+```
+tmpprofile_web_probe { name: "webA", path: "/api/dsh-xxx/other" }   # 再探别的路由
+tmpprofile_web_stop  { name: "webA" }                               # 一定要停；端口会被确认释放
+tmpprofile_clean     { names: ["webA"], confirm: true }             # 兜底：clean 也会先停实例
+```
+
+要点：
+
+- **想用真浏览器看 UI**：`tmpprofile_web_start` 之后直接打开返回的 `url`（`http://127.0.0.1:<port>/`）——
+  页面里 JS 真的执行、UI 真的渲染，只有这一步才会发生，工具层只能验到"服务端在答"。
+- **端口被占 / 想固定端口**：传 `port`；被占会明确报 `port-in-use`。
+- **插件被重载过**：进程内实例表会空，但清单里还留着 `pid`/`port`，`tmpprofile_web_stop` 会自动按
+  pid 收（返回里 `recovered: true` 就是这个情况）。
+- **别忘了收尾**：web 实例是**驻留**进程，不 stop 就一直在听端口（`tmpprofile_list` 的
+  `webInstance` 字段能看出谁还在跑）。
+
+---
+
 ## 附：什么时候不要用这套
 
 - **主力 profile 已经起不来了** → 用 `rescue` / `reserve` 实例，不是本插件（插件本身也起不来）。

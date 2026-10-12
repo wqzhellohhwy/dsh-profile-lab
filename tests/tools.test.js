@@ -50,7 +50,7 @@ test('工具层完整闭环：create → install → run → session → list �
   const home = mkdtempSync(join(tmpdir(), 'dsh-lab-tools-'))
   try {
     const { tools, byName } = makeTools(home)
-    assert.equal(tools.length, 7, '应注册 7 个工具')
+    assert.equal(tools.length, 10, '应注册 10 个工具')
 
     const created = await byName.tmpprofile_create.execute({ name: 'toolprobe', template: 'headless', purpose: '工具层闭环' })
     assertLossless(created, 'create')
@@ -168,7 +168,7 @@ test('工具层：tools.disabled 能按名字关掉工具（做工具面验证�
       getHome: () => home,
       toolConfig: { disabled: ['tmpprofile_fingerprint', 'tmpprofile_list'] },
     })
-    assert.equal(tools.length, 5)
+    assert.equal(tools.length, 8)
     assert.equal(tools.some((tool) => tool.name === 'tmpprofile_fingerprint'), false)
   } finally {
     rmSync(home, { recursive: true, force: true })

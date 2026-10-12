@@ -1,7 +1,7 @@
 {
   "name": "dsh-profile-lab",
-  "version": "0.1.0",
-  "description": "DSH 临时 profile 实验台：一键从模板或现有 profile 克隆隔离环境、装插件、跑 headless 探针会话、读回会话摘要并安全回收——把「改插件怕把本体改暴毙」这件事变成有护栏的标准动作。",
+  "version": "0.2.0",
+  "description": "DSH 临时 profile 实验台：一键从模板或现有 profile 克隆隔离环境、装插件、跑 headless 探针会话、起驻留 web 实例验 HTTP/渲染面、读回会话摘要并安全回收——把「改插件怕把本体改暴毙」这件事变成有护栏的标准动作。",
   "private": true,
   "type": "module",
   "main": "./lib/index.js",
@@ -9,6 +9,7 @@
     ".": "./lib/index.js",
     "./lab": "./lib/lab.js",
     "./sessions": "./lib/sessions.js",
+    "./web": "./lib/web.js",
     "./package.json": "./package.json"
   },
   "files": [
