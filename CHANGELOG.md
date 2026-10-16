@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## 2026-10-17 01:30 — 隔离 home 保真（凭据共享 + 会话可读）
+
+### 问题（隔离上线后立刻暴露）
+1. 隔离 `DSH_HOME` 后探针直接失败：`MISSING_CREDENTIAL: llm-deepseek: no API key`（凭据库在真实 home 里）。
+2. 探针会话落在隔离 home，`tmpprofile_session` 按真实 home 找不到日志文件。
+
+### 修改
+- `lib/runner.js` `applyIsolatedHome()`：
+  - 隔离 home 里**保留真实 DSH_HOME 的「非数据项」**：目录用 junction、文件（如 `.credentials.yaml`）直接复制；
+    名单见 `ISOLATED_DATA_NAMES`（memories / sessions / storages / cache / logs / llm-deepseek / super-injector / po06-* 等真正被隔离的数据）。
+  - 幂等重建（`removeIsolatedEntry()`：链接只删链接本身，旧版留下的真目录才递归删）。
+- `lib/lab.js` `findSessionFileById()`：除真实 `sessions/` 外，连带扫
+  `<DSH_HOME>/profiles/*/.lab-home/.dsh/sessions`——隔离后的探针会话照样能读。
+
+### 实测
+- meblk2（headless）探针：**成功**且**列出 19 个 `dev_*` 元操控工具**（隔离前这个 profile 因 `webServer` 依赖整插件 pending，一个都没有）。
+- `tmpprofile_session(meblk2)` 正常读到隔离 home 里的会话文件。
+
+### agent 约定
+- 隔离 home 在 `<profile>/.lab-home`；要读写真机数据设 `DSH_LAB_KEEP_HOME=1`。
+
 ## 2026-10-17 01:00 — 数据隔离：临时 profile 不再碰真机目录
 
 ### 问题
