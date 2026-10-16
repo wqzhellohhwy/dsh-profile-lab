@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-10-17 01:00 — 数据隔离：临时 profile 不再碰真机目录
+
+### 问题
+临时 profile 里的插件按 `homedir()` / `DSH_HOME` 推数据目录，于是**实测会写进真机的 `~/.dsh/memories`**（当天两次污染用户真实状态）。
+
+### 修改
+- `lib/runner.js` 新增 **`isolatedHome()` / `applyIsolatedHome()`**（导出）：spawn 前设置环境变量 ——
+  1. `HOME` / `USERPROFILE` → `<profile>/.lab-home`（插件按 homedir 推的路径全落这里）；
+  2. `DSH_HOME` → `<profile>/.lab-home/.dsh`（DSH 的 memories / sessions / coi … 也落这里），其下 `profiles/<name>` 用 **junction 指回真实 profile**，DSH 照常找得到 profile。
+  - 链接**幂等重建**（先删再建，避免"链接还在但指错地方"——首版就在这栽过一次）。
+  - 逃生口：`DSH_LAB_KEEP_HOME=1` 时两层隔离都不做。
+- `runHeadless()` 与 `lib/web.js` 的 `startWebInstance()` 都在 spawn 前套用。
+
+### 实测
+- 起 meblk web 实例后，探针 `/memory-evolve/api/tools` 的 `file` 字段由 `C:\Users\53518\.dsh\memories\tools.json` 变为 `…\.dsh\profiles\meblk\.lab-home\.dsh\memories\tools.json` ✓（真机目录不再被写），探针 HTTP 200。
+
+### agent 约定
+- 临时 profile 默认隔离 home；确有需要读写真机数据时才设 `DSH_LAB_KEEP_HOME=1`。
+- 隔离数据在 `<profile>/.lab-home`，清理 profile 时一并删除。
+
 ## 2026-10-17 00:30 — 装包自动降级 + web 实例能力预检
 
 ### 问题
