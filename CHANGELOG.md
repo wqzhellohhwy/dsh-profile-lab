@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 2026-10-17 00:30 — 装包自动降级 + web 实例能力预检
+
+### 问题
+1. **clone 出来的 profile 装包必失败**：它只逐项链接了 `node_modules`，没复制 pnpm 的 `.modules.yaml` → `dsh plugin --profile <n> add …` 报 `ENOENT … .modules.yaml`。
+2. **headless 型 profile 起 web 实例**：首版尝试「自动补 `@deepseek-ai/dsh-web-app`」，实测**没用** —— **一个 profile 只能有一个 app**：补了 bundle 后 `dsh --profile <n> --help` 仍打印 headless app 的用法、`--port` 变成未知参数、端口上根本没有我们的服务。
+
+### 修改
+- `lib/lab.js`：
+  - 新增导出 **`fallbackInstallLinked(name, packages, home)`**：手工装配 —— 建 junction + 写 `dependencies` 与 `dsh.profile.bundles`（带 `dsh.bundle` 的包照官方行为挂进 bundles）；只支持 `link:` 规格，其它规格如实报 `reason`。
+  - `installIntoProfile()`：pnpm 失败时**自动降级**，返回 `{ ok: true, fallback: true, … , note }`；降级也做不了才失败，并给出 `fallbackReason`。
+- `lib/web.js`：
+  - 新增 `assertWebCapable()`：起实例前看 profile 的 bundles —— **含 headless（app 是 headless）或缺 web-app** 都直接返回可读错误 + 指引（`template: 'web'` 或从 web 型 profile 克隆），不再做无效的自动补 bundle。
+  - `startWebInstance()` 用它替换首版逻辑，失败 `reason: 'not-a-web-profile'`。
+
+### 实测
+- `tmpprofile_install(meblk, ['link:…/dsh-cache-keepalive'])` → pnpm ENOENT → **降级成功**（`fallback: true`，bundle 与 dependency 均已写入）。
+- `tmpprofile_web_start(meblk2)`（headless 型）→ 「app 是 headless，不能起 web 实例」+ 两条可执行建议。
+- `tmpprofile_web_start(meblk)`（web 型）→ 成功，探针 **HTTP 200**（回归通过）。
+
+### agent 约定
+- **一个 profile 只有一个 app**：headless 型只跑 headless 探针，web 型只起 web 实例；两用就建两个 profile。
+- 往临时 profile 装包用 `link:` 规格最稳（pnpm 失败会自动降级，registry 规格不支持降级）。
+
 ## 2026-10-16 23:55 — 探针运行：类型预检 + `--json` 自适应（用户实测反馈）
 
 ### 问题
