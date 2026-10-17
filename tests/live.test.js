@@ -24,6 +24,7 @@ import {
   loadManifest,
   recordSession,
 } from '../lib/lab.js'
+import { tmproot } from './_tmp.js'
 
 const LIVE = process.env.DSH_LAB_LIVE === '1'
 const HOME = process.env.DSH_HOME ?? join(homedir(), '.dsh')
@@ -50,7 +51,7 @@ test('live：建 → 跑 headless → 读回摘要 → 清理，且不触碰其�
   console.log(`    [live] dsh ${dsh.version} @ ${dsh.binPath}（来源：${dsh.source}）`)
 
   const name = `liveprobe${Date.now().toString(36)}`
-  const cwd = mkdtempSync(join(tmpdir(), 'dsh-lab-live-cwd-'))
+  const cwd = tmproot("dsh-lab-live-cwd-")
   const before = fingerprintProfiles(HOME)
   let sessionId
   let cleaned
@@ -104,7 +105,7 @@ test('live：装一个本地插件后 bundles 自动带上它，跑完能读回�
     return
   }
   const name = `liveplug${Date.now().toString(36)}`
-  const cwd = mkdtempSync(join(tmpdir(), 'dsh-lab-live-plug-'))
+  const cwd = tmproot("dsh-lab-live-plug-")
   try {
     const created = await createTempProfile({ name, template: 'headless', purpose: 'live 装插件验证', dsh, home: HOME })
     assert.equal(created.ok, true)

@@ -16,6 +16,7 @@ import { test } from 'node:test'
 
 import { buildTools } from '../lib/tools.js'
 import { isWebRunning, killAllWebInstances, pickFreePort, probeHttp, startWebInstance, stopWebInstance } from '../lib/web.js'
+import { tmproot } from './_tmp.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FAKE_DSH = join(HERE, 'fixtures', 'fake-dsh.mjs')
@@ -96,7 +97,7 @@ test('probeHttp 拿到状态码与 body 预览，超时/拒连给出 ok:false', 
 })
 
 test('web 实例闭环：start → probe → 重复 start 被拒 → stop → 端口释放', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-lab-web-'))
+  const home = tmproot("dsh-lab-web-")
   try {
     const byName = makeTools(home)
     const created = await byName.tmpprofile_create.execute({ name: 'webprobe', template: 'web', purpose: 'web 实例闭环' })
@@ -128,7 +129,7 @@ test('web 实例闭环：start → probe → 重复 start 被拒 → stop → �
 })
 
 test('工具层：web_start / web_probe / web_stop 与 list 的 webInstance 字段', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-lab-web-tools-'))
+  const home = tmproot("dsh-lab-web-tools-")
   try {
     const byName = makeTools(home)
     assert.equal(byName.tmpprofile_web_start !== undefined, true, '应注册 web_start')
@@ -168,7 +169,7 @@ test('工具层：web_start / web_probe / web_stop 与 list 的 webInstance 字�
 })
 
 test('clean 会先停掉还在跑的 web 实例（不留孤儿进程）', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-lab-web-clean-'))
+  const home = tmproot("dsh-lab-web-clean-")
   try {
     const byName = makeTools(home)
     await byName.tmpprofile_create.execute({ name: 'webclean', template: 'web' })
@@ -189,7 +190,7 @@ test('clean 会先停掉还在跑的 web 实例（不留孤儿进程）', async 
 })
 
 test('工具层：web 相关错误路径也是 lossless JSON（ok:false + message）', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-lab-web-err-'))
+  const home = tmproot("dsh-lab-web-err-")
   try {
     const byName = makeTools(home)
     const cases = [
@@ -218,7 +219,7 @@ test('工具层：web 相关错误路径也是 lossless JSON（ok:false + messag
 })
 
 test('killAllWebInstances 一次收掉全部实例', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-lab-web-all-'))
+  const home = tmproot("dsh-lab-web-all-")
   try {
     const byName = makeTools(home)
     for (const name of ['weball1', 'weball2']) {

@@ -21,6 +21,7 @@ import {
   recordSession,
   removeProfileTree,
 } from '../lib/lab.js'
+import { tmproot } from './_tmp.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FAKE_DSH = join(HERE, 'fixtures', 'fake-dsh.mjs')
@@ -29,7 +30,7 @@ const FAKE_DSH = join(HERE, 'fixtures', 'fake-dsh.mjs')
 const fakeRunner = { execPath: process.execPath, asNode: false, binPath: FAKE_DSH, version: '0.2.1-alpha.1-test' }
 
 function tempHome() {
-  return mkdtempSync(join(tmpdir(), 'dsh-lab-'))
+  return tmproot("dsh-lab-")
 }
 
 /** 造一个"看起来像真 profile"的源目录（含真实 node_modules 目录与 @scope）。 */

@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import { zstdCompressSync } from 'node:zlib'
 
 import { decodeZstdFrames, readSessionEvents, summarize, ZSTD_MAGIC } from '../lib/sessions.js'
+import { tmproot } from './_tmp.js'
 
 /** 造一个多帧 zstd 会话日志（模拟 DSH 每追加一批事件压一帧）。 */
 function multiFrameSession(rows) {
@@ -21,7 +22,7 @@ test('多帧 zstd：每一帧都被解出来，且顺序正确', () => {
   assert.equal(decoded.length, 3)
   for (let i = 1; i < decoded.length; i += 1) assert.ok(decoded[i].offset > decoded[i - 1].offset)
 
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-lab-sessions-'))
+  const dir = tmproot("dsh-lab-sessions-")
   try {
     const file = join(dir, 'session.v4.jsonl.zstd')
     writeFileSync(file, buf)
@@ -41,7 +42,7 @@ test('多帧 zstd：压缩数据里出现的伪魔数被跳过，不会污染事
 })
 
 test('明文 .jsonl 也能读（旧格式 / 未压缩）', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-lab-sessions-plain-'))
+  const dir = tmproot("dsh-lab-sessions-plain-")
   try {
     const file = join(dir, 'session.v4.jsonl')
     writeFileSync(file, `${JSON.stringify(HEADER)}\n${JSON.stringify({ type: 'turn/end', seq: 9 })}\n`, 'utf8')

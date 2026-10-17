@@ -14,9 +14,10 @@ import {
   RESERVED_PROFILE_NAMES,
   withLock,
 } from '../lib/guards.js'
+import { tmproot } from './_tmp.js'
 
 function tempHome() {
-  return mkdtempSync(join(tmpdir(), 'dsh-lab-guards-'))
+  return tmproot("dsh-lab-guards-")
 }
 
 test('assertProfileName 接受合法名', () => {

@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 
 import { buildTools, jsonSafe } from '../lib/tools.js'
+import { tmproot } from './_tmp.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FAKE_DSH = join(HERE, 'fixtures', 'fake-dsh.mjs')
@@ -46,8 +47,53 @@ test('jsonSafe 丢掉 undefined、保留 null、非有限数转 null', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(value)), value)
 })
 
+test('jsonSafe 兜住 lossless JSON 的全部拒绝项（-0 / 稀疏数组 / 环 / BigInt / Symbol / 类实例）', () => {
+  const sparse = [1, , 3] // eslint-disable-line no-sparse-arrays
+  assert.equal(sparse.length, 3)
+  assert.equal(1 in sparse, false, '前提：确实是稀疏数组')
+
+  const cyclic = { name: 'root' }
+  cyclic.self = cyclic
+
+  class Thing {
+    constructor() { this.kind = 'thing'; this.n = 1 }
+    method() { return 1 }
+  }
+
+  const value = jsonSafe({
+    negZero: -0,
+    sparse,
+    cyclic,
+    big: 10n,
+    sym: Symbol('s'),
+    map: new Map([['k', 'v']]),
+    set: new Set([1, 2]),
+    date: new Date('2026-10-13T00:00:00.000Z'),
+    badDate: new Date(Number.NaN),
+    err: new Error('boom'),
+    inst: new Thing(),
+  })
+
+  assert.equal(Object.is(value.negZero, -0), false, '-0 必须被转成 0（规则显式拒绝 -0）')
+  assert.equal(value.negZero, 0)
+  assert.equal(1 in value.sparse, true, '稀疏数组必须被填实（空洞补 null）')
+  assert.deepEqual(value.sparse, [1, null, 3])
+  assert.equal(value.cyclic.self, null, '环必须降级为 null 而不是抛栈溢出')
+  assert.equal(value.big, '10')
+  assert.equal(typeof value.sym, 'string')
+  assert.deepEqual(value.map, { k: 'v' })
+  assert.deepEqual(value.set, [1, 2])
+  assert.equal(value.date, '2026-10-13T00:00:00.000Z')
+  assert.equal(value.badDate, null)
+  assert.deepEqual(value.err, { name: 'Error', message: 'boom' })
+  assert.deepEqual(value.inst, { kind: 'thing', n: 1 }, '类实例摊平成 plain object，函数字段被丢弃')
+
+  // 全部可无损往返
+  assert.deepEqual(JSON.parse(JSON.stringify(value)), value)
+})
+
 test('工具层完整闭环：create → install → run → session → list → fingerprint → clean', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-lab-tools-'))
+  const home = tmproot("dsh-lab-tools-")
   try {
     const { tools, byName } = makeTools(home)
     assert.equal(tools.length, 10, '应注册 10 个工具')
@@ -108,7 +154,7 @@ test('工具层完整闭环：create → install → run → session → list �
 })
 
 test('工具层：同会话多轮（第二次传 sessionId 续上同一会话）', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-lab-tools-multi-'))
+  const home = tmproot("dsh-lab-tools-multi-")
   try {
     const { byName } = makeTools(home)
     await byName.tmpprofile_create.execute({ name: 'multiprobe', template: 'headless' })
@@ -139,7 +185,7 @@ test('工具层：同会话多轮（第二次传 sessionId 续上同一会话）
 })
 
 test('工具层：错误路径也必须是 lossless JSON（ok:false + message）', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-lab-tools-err-'))
+  const home = tmproot("dsh-lab-tools-err-")
   try {
     const { byName } = makeTools(home)
     const cases = [
@@ -161,7 +207,7 @@ test('工具层：错误路径也必须是 lossless JSON（ok:false + message）
 })
 
 test('工具层：tools.disabled 能按名字关掉工具（做工具面验证时用）', () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-lab-tools-off-'))
+  const home = tmproot("dsh-lab-tools-off-")
   try {
     const tools = buildTools({
       getRunner: async () => fakeRunner,
