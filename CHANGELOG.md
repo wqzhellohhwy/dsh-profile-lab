@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 未发布 — 2026-10-18 02:45（修：隔离 home 里 profiles 自指 → 无限递归）
+
+- **根因**：`applyIsolatedHome` → `linkShadowEntries` 把真实 `DSH_HOME` 下的「非数据项」
+  整体 junction 进 `<profile>/.lab-home/.dsh/`，**其中 `profiles` 也会被链进去**；而真实
+  `profiles` 里**含当前 profile 自己**，于是形成
+  `.lab-home/.dsh/profiles/<name>/.lab-home/.dsh/profiles/<name>/...` 的**无限自指**
+  （本机实测沿链推进 12 层全部成功 = 无底）。后果：任何 `-Recurse` 遍历（备份 / 索引 /
+  杀软 / grep）都会被拖死或报「路径过长」。
+- **修（`lib/runner.js`）**：
+  - `ISOLATED_DATA_NAMES` 增加 `'profiles'` → 不再整体链接它；
+  - 新增 `mirrorSelfProfile(realHome, labDshHome, profile)`：在隔离 home 里建**真目录**
+    `profiles/<profile>`，逐项镜像该 profile 自己的条目并**排除 `.lab-home`**
+    （`node_modules` 这类目录仍用 junction —— 它内部不含 `.lab-home`，不会自指）；
+  - `linkShadowEntries` 增加 `profile` 形参并调用上者；`applyIsolatedHome` 相应传参；
+  - **自愈**：若旧版本已留下整体 junction，`mirrorSelfProfile` 先只把那个链接删掉
+    （`lstat.isSymbolicLink()` + `rmSync(force)`，绝不跟随；真实 profiles 不受影响）；
+  - 自检：`node --check lib/runner.js` → exit 0。
+- **已修的两处现存污染（本机）**：`profiles/meblk`、`profiles/meblk2` 的
+  `.lab-home/.dsh/profiles` 原是指向真实 `profiles` 的 Junction，已用
+  `fsutil reparsepoint delete` 摘除链接属性（留下空目录）→ 递归链断开；
+  真实 `profiles` 下 18 个 profile 完好无损。
+- **验证**：新建 `selflink-test`（模板 headless）跑一次探针 → 隔离 home 里
+  `profiles` 为真目录、其下只镜像 `selflink-test` 自己、**不含 `.lab-home`**；
+  沿自指链推进第 1 层即失败（修复前 12 层全部成功）。
+
 ## 2026-10-17 01:30 — 隔离 home 保真（凭据共享 + 会话可读）
 
 ### 问题（隔离上线后立刻暴露）
