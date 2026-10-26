@@ -24,6 +24,11 @@ import { join } from 'node:path'
 import { after, afterEach } from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
 
+import { ALLOW_TEMP_HOME_ENV } from '../lib/guards.js'
+
+// 本套件刻意把 home 放在 %TEMP%（要测的就是这些路径），显式解除 temp-home 刹车。
+process.env[ALLOW_TEMP_HOME_ENV] = '1'
+
 /** 本测试文件登记的临时目录（按创建顺序）。 */
 const roots = []
 

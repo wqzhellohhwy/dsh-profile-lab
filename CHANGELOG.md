@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-10-26 18:51 — clean 先解析会话目录再删 profile
+
+会话目录须在 `removeProfileTree` 之前解析，否则探针会话随 profile 目录消失、`sessionsRemoved` 恒空。验：`node --test`
+
+## 2026-10-26 18:50 — 会话目录发现补上隔离 home
+
+`findSessionDir` 改扫 `sessionRoots`（`$DSH_HOME/sessions` 加各 profile 的 `.lab-home/.dsh/sessions`），修无 `--json` 时 sessionId 回捞失败。验：`node --test`
+
+## 2026-10-26 18:28 — 拒在 %TEMP% 建带 junction 的克隆
+
+`assertNotTempHome` 拦住 `createTempProfile`/`installIntoProfile` 的 junction；`DSH_PROFILE_LAB_ALLOW_TEMP_HOME=1` 放行，测试用。验：`node --test`
+
 ## 未发布 — 2026-10-18 02:45（修：隔离 home 里 profiles 自指 → 无限递归）
 
 - **根因**：`applyIsolatedHome` → `linkShadowEntries` 把真实 `DSH_HOME` 下的「非数据项」

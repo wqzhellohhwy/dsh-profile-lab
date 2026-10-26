@@ -21,6 +21,8 @@
 | 读回验证要自己解**多帧 zstd**（`session.v4.jsonl.zstd`），几乎每个会话都重写一遍 Python | `tmpprofile_session`：内置逐帧解码，直接给 preset / 工具面 / 上下文 / token |
 | 清理靠自觉（历史上真的漏过两次，残留至今） | `tmpprofile_clean`：清单白名单 + junction 感知删除 + 残留自检 |
 | junction 直接 `Remove-Item -Recurse` 有删进源仓库的风险 | 先 `lstat` 判链接、解链接，再递归删目录；**绝不跟随链接** |
+| 清理软件按「临时文件」整树删 `%TEMP%` 时会跟随联结，把插件源目录删空（2026-10-25 事故根因） | 要建 junction 的路径（`create: clone/packages`、`install: link:`）一律拒绝落在 `os.tmpdir()` 内的 home；测试等确需临时 home 时设 `DSH_PROFILE_LAB_ALLOW_TEMP_HOME=1` 显式放行 |
+| 探针会话落在 profile 内部的隔离 home（`<profile>/.lab-home/.dsh/sessions`），只扫 `$DSH_HOME/sessions` 找不到会话 | `sessionRoots()` 把隔离 home 一并纳入（`findSessionDir` 用），`clean` 则在删 profile 目录**之前**先把会话目录解析好 |
 
 ---
 

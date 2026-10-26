@@ -130,6 +130,32 @@ test('installIntoProfile：追加与移除都反映到 bundles', async () => {
   }
 })
 
+test('createTempProfile：要建 junction 时拒绝 %TEMP% 下的 home，显式放行才建', async () => {
+  const home = tempHome()
+  const saved = process.env.DSH_PROFILE_LAB_ALLOW_TEMP_HOME
+  delete process.env.DSH_PROFILE_LAB_ALLOW_TEMP_HOME
+  try {
+    seedSourceProfile(home, 'desktop')
+    await assert.rejects(
+      createTempProfile({ name: 'probe9', clone: 'desktop', dsh: fakeRunner, home }),
+      /%TEMP%/,
+    )
+    await createTempProfile({ name: 'probe8', template: 'headless', dsh: fakeRunner, home })
+    await assert.rejects(
+      installIntoProfile({ name: 'probe8', packages: ['link:C:/plugins/dsh-focus-guard'], dsh: fakeRunner, home }),
+      /%TEMP%/,
+    )
+    process.env.DSH_PROFILE_LAB_ALLOW_TEMP_HOME = '1'
+    const allowed = await createTempProfile({ name: 'probe10', clone: 'desktop', dsh: fakeRunner, home })
+    assert.equal(allowed.ok, true)
+    assert.ok(existsSync(join(home, 'profiles', 'probe10', 'node_modules', 'dsh-focus-guard')))
+  } finally {
+    if (saved === undefined) delete process.env.DSH_PROFILE_LAB_ALLOW_TEMP_HOME
+    else process.env.DSH_PROFILE_LAB_ALLOW_TEMP_HOME = saved
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
 test('cloneProfile：node_modules 逐项链接复用，源 profile 一个字节都不改', () => {
   const home = tempHome()
   try {
